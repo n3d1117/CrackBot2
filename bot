@@ -1,0 +1,264 @@
+#!/bin/bash
+
+# Requirements: 
+# Device: ssh, plutil, modified bfdecrypt, NoAppThinning, AutoTouch, activator, Open for iOS 11
+# macOS: jq, ios-deploy
+
+# GLOBAL CONFIGURATION
+readonly DEVICE_IP="localhost"
+readonly DEVICE_PORT="2222"
+
+# TIMESTAMP
+timestamp() {
+	date "+%H:%M:%S"
+}
+
+# LOG WITH STYLE
+log_red () { echo -e "\033[0;31m[$(timestamp)] $1\033[0m"; }
+log_green () { echo -e "\033[0;32m[$(timestamp)] ✔ $1\033[0m"; }
+log_yellow () { echo -e "\033[1;33m[$(timestamp)] $1\033[0m"; }
+log_cyan () { echo -e "\033[1;36m[$(timestamp)] $1\033[0m"; }
+log_blue () { echo -e "\033[1;34m[$(timestamp)] $1\033[0m"; }
+
+trap exit_script INT
+
+# HELP MENU
+helptext() {
+	scr=$(basename $0)
+	log_blue "USAGE: $scr <iTunes link>"
+}
+
+# ---------------------------- Cleanup ---------------------------------
+
+cleanup() {
+	log_yellow "Cleaning up..."
+	
+	# Return to home
+	ssh -fq root@$DEVICE_IP -p $DEVICE_PORT 2> /dev/null 'activator send libactivator.system.homebutton'
+	ssh -fq root@$DEVICE_IP -p $DEVICE_PORT 2> /dev/null 'activator send libactivator.system.homebutton'
+	
+	sleep 1
+	
+	# Remove unsigned ipa
+	rm decrypted-app.ipa 2> /dev/null
+	
+	# Remove result.txt
+	ssh -fq root@$DEVICE_IP -p $DEVICE_PORT 2> /dev/null "
+		rm -rf /private/var/mobile/Documents/AutoTouch
+	"
+	
+	# Disable bfdecrypt for app
+	ssh -fq root@$DEVICE_IP -p $DEVICE_PORT 2> /dev/null "
+		cd /var/mobile/Library/Preferences && plutil -rmkey "$BUNDLE_ID" com.level3tjg.bfdecrypt.plist >/dev/null
+	"
+	
+	# Uninstall app
+	ios-deploy -9 -1 $BUNDLE_ID &> /dev/null
+}
+
+exit_script() {
+	cleanup
+	exit 1
+}
+
+# If no arguments provided, invoke help text
+[[ $@ ]] || { helptext; exit 0; }
+
+# Check if device is connected with usb
+is_connected="$(ios-deploy -c -W)"
+if [[ $is_connected != *"Found"* ]]; then
+	log_red "Looks like your device is not connected with USB. Aborting..."
+	exit 1
+fi
+
+ITUNES_URL="$1"
+ITUNES_URL="${ITUNES_URL/?mt=*/}" # Strip ending '?mt=*'
+
+log_cyan "Searching iTunes..."
+
+ITUNES_ID="${ITUNES_URL##*/}" # Get id
+
+response=$(curl -s "https://itunes.apple.com/us/search?limit=200&term=$ITUNES_ID&media=software")
+if [ "$response" == "" ];then
+	log_red "Got empty response... iTunes API is down?"
+	exit 1
+elif (( $(echo $response | jq .resultCount) < 1 )); then
+	log_red "Failed to search iTunes API. Aborting..."
+	exit 1
+fi
+result=$(echo $response | jq .results | jq .[0])
+
+NAME=$(echo $result | jq -r .trackName)
+TRACKID=$(echo $result | jq -r .trackId)
+VERSION=$(echo $result | jq -r .version)
+BUNDLE_ID=$(echo $result | jq -r .bundleId)
+
+log_green "Ok, found this app:"
+echo -e "\033[1;36m     [+] Name:		\033[0;31m$NAME"
+echo -e "\033[1;36m     [+] Version:	\033[0;31m$VERSION"
+echo -e "\033[1;36m     [+] Bundle id:	\033[0;31m$BUNDLE_ID"
+
+# Reset BASH time counter
+SECONDS=0
+
+# Uninstall app before starting
+ios-deploy -9 -1 $BUNDLE_ID &> /dev/null
+
+log_yellow "SSHing to device..."
+
+# ------------------------------ Download app ---------------------------------
+
+download_commands="
+	$(declare -f timestamp log_cyan)
+	log_cyan '[SSH] Unlocking device if not awake...'
+	activator send libactivator.system.homebutton
+	sleep 1
+	activator send libactivator.system.homebutton
+	sleep 1
+	log_cyan '[SSH] Opening App Store...'
+ 	uiopen $ITUNES_URL
+	sleep 5
+	log_cyan '[SSH] Trying to download $NAME...'
+	sleep 1
+	activator activate libactivator.statusbar.hold
+	sleep 2
+	mkdir -p /private/var/mobile/Documents/ && chown -R mobile:mobile /private/var/mobile/Documents/
+"
+
+ssh -q root@$DEVICE_IP -p $DEVICE_PORT 2> /dev/null <<-EOF
+	$download_commands
+EOF
+
+# Wait for result.txt written by AutoTouch
+ssh -q root@$DEVICE_IP -p $DEVICE_PORT 2> /dev/null 'max_retries=10; i=0; while [ -z "$(ls -A /private/var/mobile/Documents/AutoTouch)" ] && [ "$i" -le "$max_retries" ]; do ((i++)); sleep 0.5; done; [ "$i" -le "$max_retries" ] && exit 0 || exit 1'
+if [ $? -ne 0 ]; then
+	log_red "Error! Could not retrieve result.txt. Aborting..."
+	exit_script
+fi
+
+# Check if app started downloading correctly (result==0)
+ssh -q root@$DEVICE_IP -p $DEVICE_PORT 2> /dev/null 'cd /private/var/mobile/Documents/AutoTouch && exit `cat result.txt`'
+if [ $? -ne 0 ]; then
+	log_red "Error! Could not download app. Aborting..."
+	exit_script
+fi
+
+log_green "Ok, app should be downloading..."
+
+sleep 1
+
+# ------------------------------ Wait for install ---------------------------------
+
+log_yellow "Waiting for app to install..."
+
+# Wait until app is installed
+max_retries=300
+i=0
+while [ "$i" -le "$max_retries" ]; do
+	is_installed="$(ios-deploy -e -1 $BUNDLE_ID)"
+	if [[ ${is_installed: -4} == "true" ]]; then 
+		break
+	fi
+	((i++)) 
+	sleep 2
+done
+
+if [ "$i" -gt "$max_retries" ]; then
+	log_red "Error! App did not install in time or did not install at all. Aborting..."
+	exit_script
+fi
+
+sleep 1
+
+log_green "Ok, app should be installed..."
+
+sleep 1
+
+# ------------------------------ Enable bfdecrypt ---------------------------------
+
+log_yellow "Enabling bfdecrypt for '$BUNDLE_ID'..."
+
+ssh -q root@$DEVICE_IP -p $DEVICE_PORT 2> /dev/null "
+	cd /var/mobile/Library/Preferences && plutil -int 1 -key "$BUNDLE_ID" com.level3tjg.bfdecrypt.plist >/dev/null
+"
+
+sleep 0.5
+
+# ---------------------------------- Open app --------------------------------------
+
+log_yellow "Opening app..."
+
+ssh -q root@$DEVICE_IP -p $DEVICE_PORT 2> /dev/null "
+	find /var/mobile/Containers/Data/Application/ -name decrypted-app.ipa -exec rm "{}" \;
+	open $BUNDLE_ID
+"
+
+sleep 1
+
+# ----------------------------- Wait for decryption --------------------------------
+
+log_green "Ok, waiting for decryption..."
+
+sleep 1
+
+ssh -q root@$DEVICE_IP -p $DEVICE_PORT 2> /dev/null 'max_retries=100; i=0; while [ -z "$(find /var/mobile/Containers/Data/Application/ -name decrypted-app.ipa)" ] && [ "$i" -le "$max_retries" ]; do ((i++)); sleep 1; done; [ "$i" -le "$max_retries" ] && exit 0 || exit 1'
+if [ $? -ne 0 ]; then
+	log_red "Error! App did not decrypt in time. Aborting..."
+	exit_script
+fi
+
+sleep 1
+
+# ------------------------------ Transfer ipa ---------------------------------
+
+log_yellow "Found decrypted-app.ipa, transfering..."
+
+mkdir -p ipas && cd ipas
+echo -en "\033[1;36m"
+ipa_path=$(ssh -q root@$DEVICE_IP -p $DEVICE_PORT 2> /dev/null "find /var/mobile/Containers/Data/Application/ -name decrypted-app.ipa")
+scp -p -P $DEVICE_PORT root@$DEVICE_IP:$ipa_path .
+if [ $? -ne 0 ]; then
+	log_red "Error! Failed to transfer ipa. Aborting..."
+	exit_script
+fi
+
+# ------------------------------ Filename ---------------------------------
+
+filename="${NAME//-}" # delete - character
+filename="${filename//—}" # delete — character
+filename="${filename//‒}" # delete ‒ character
+filename="${filename//–}" # delete – character
+filename="${filename//:}" # delete : character
+filename="${filename//&}" # delete & character
+filename="${filename//.}" # delete . character
+filename="${filename//!}" # delete ! character
+filename="${filename//|}" # delete | character
+filename="${filename//®}" # delete ® character
+filename="${filename//,}" # delete , character
+filename="${filename//#}" # delete # character
+filename="${filename//™}" # delete ™ character
+filename="${filename///}" # delete / character
+filename="${filename//(}" # delete ( character
+filename="${filename//)}" # delete ) character
+filename="${filename//+}" # delete + character
+filename="${filename//・}" # delete ・ character
+filename="${filename//  /_}" # replace double spaces with underscore
+filename="${filename// /_}" # replace spaces with underscore
+filename=$(echo $filename | tr '[:upper:]' '[:lower:]') # make it all lowercase
+VERSION="${VERSION//(}" # delete ( character
+VERSION="${VERSION//)}" # delete ) character
+filename="${filename}_${VERSION}.ipa"
+
+# ------------------------------ Rename .ipa ---------------------------------
+
+mv decrypted-app.ipa $filename
+log_green "Done! File is at ./ipas/$filename [$size MB]"
+
+# Do whatever you want with the ipa here: sign it, upload it somewhere etc...
+
+# ---------------------------- Done! ---------------------------------
+
+cleanup
+elapsed_time="$(($SECONDS / 3600))h:$((($SECONDS / 60) % 60))m:$(($SECONDS % 60))s"
+log_green "Done! Script ended in [$elapsed_time]"
+exit 0

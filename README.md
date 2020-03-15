@@ -71,6 +71,8 @@ CrackBot2 is a bash script used to automate decryption of iOS apps.
 	./bot
 	```
 
+**NOTE**: Only free apps (or paid ones previously bought) are supported at the moment.
+
 ## Credits
 * [bfdecrypt](https://github.com/BishopFox/bfdecrypt): Utility to decrypt App Store apps on jailbroken iOS 11.x
 * [level3tjg](https://level3tjg.xyz/repo/) for a preference-based bfdecrypt

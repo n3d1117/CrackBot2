@@ -49,21 +49,25 @@ CrackBot2 is a bash script used to automate decryption of iOS apps.
 	ldid -S /Library/MobileSubstrate/DynamicLibraries/bfdecrypt.dylib
 	killall backboardd
 	```
-* Then create needed folders on device:
+* Then create needed folders **on device**:
 	```bash
 	cd /var/mobile/Library/AutoTouch/Scripts && mkdir -p CrackBot2
 	```
-* Download latest release from releases page to your downloads folder and unzip it
+* Clone this repo on **your computer**:
+	```bash
+	cd ~/downloads/
+	git clone https://github.com/n3d1117/CrackBot2.git
+	```
 * Copy AutoTouch script to device:
 	```bash
-	cd ~/downloads/CrackBot2-master/AutoTouch 
+	cd ~/downloads/CrackBot2/AutoTouch 
 	scp -r appstoredownload.lua images root@YOUR_DEVICE_IP:/var/mobile/Library/AutoTouch/Scripts/CrackBot2
 	```
 * On your device open AutoTouch, go to `appstoredownload.lua`, click (i) -> Playing settings -> Trigger with activator -> Select `Hold status bar`.
 * Open `bot` file with a text editor and edit `DEVICE_IP` and `DEVICE_PORT` parameters with yours.
 * Done! You can now run the script from your computer:
 	```bash
-	cd ~/downloads/CrackBot2-master 
+	cd ~/downloads/CrackBot2/ 
 	./bot
 	```
 

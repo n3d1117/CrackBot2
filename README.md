@@ -32,10 +32,12 @@ CrackBot2 is a bash script used to automate decryption of iOS apps.
 ### Computer
 * Install jq with `brew install jq` (requires [Homebrew](https://brew.sh))
 * Install [ios-deploy](https://github.com/ios-control/ios-deploy) with `brew install ios-deploy` (requires [Homebrew](https://brew.sh))
+* Connect your jailbroken device with USB
 * Enable passwordless root login for your device:
 	* `ssh-keygen -t rsa -P '' -f ~/.ssh/YOUR_DEVICE_NAME`
-	* `ssh-copy-id -i ~/.ssh/YOUR_DEVICE_NAME.pub root@YOUR_DEVICE_IP`
+	* `ssh-copy-id -i ~/.ssh/YOUR_DEVICE_NAME.pub root@YOUR_DEVICE_IP` (if needed, install ssh-copy-id with `brew install ssh-copy-id`)
 	* You should now be able to connect to your device with `ssh root@YOUR_DEVICE_IP` without entering the password.
+	* **NOTE**: I strongly recommend enabling [SSH via USB](https://iphonedevwiki.net/index.php/SSH_Over_USB) so you can connect to your device as `ssh root@localhost -p 2222` 
 
 ## Getting started
 * Download and install [my fork](https://github.com/n3d1117/bfdecrypt) of [BishopFox's bfdecrypt](https://github.com/BishopFox/bfdecrypt): 
@@ -64,7 +66,7 @@ CrackBot2 is a bash script used to automate decryption of iOS apps.
 	scp -r appstoredownload.lua images root@YOUR_DEVICE_IP:/var/mobile/Library/AutoTouch/Scripts/CrackBot2
 	```
 * On your device open AutoTouch, go to `appstoredownload.lua`, click (i) -> Playing settings -> Trigger with activator -> Select `Hold status bar`.
-* Open `bot` file with a text editor and edit `DEVICE_IP` and `DEVICE_PORT` parameters with yours.
+* Open `bot` file with a text editor and, if needed, edit `DEVICE_IP` and `DEVICE_PORT` parameters with yours.
 * Done! You can now run the script from your computer:
 	```bash
 	cd ~/downloads/CrackBot2/ 

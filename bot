@@ -252,6 +252,7 @@ filename="${filename}_${VERSION}.ipa"
 # ------------------------------ Rename .ipa ---------------------------------
 
 mv decrypted-app.ipa $filename
+size=$(du -m -s "$filename" | cut -f 1)
 log_green "Done! File is at ./ipas/$filename [$size MB]"
 
 # Do whatever you want with the ipa here: sign it, upload it somewhere etc...

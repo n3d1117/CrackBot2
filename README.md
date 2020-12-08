@@ -34,7 +34,7 @@ CrackBot2 is a bash script used to automate decryption of iOS apps.
 * Install [ios-deploy](https://github.com/ios-control/ios-deploy) with `brew install ios-deploy` (requires [Homebrew](https://brew.sh))
 * Connect your jailbroken device with USB
 * Enable passwordless root login for your device:
-	* `ssh-keygen -t rsa -P '' -f ~/.ssh/YOUR_DEVICE_NAME`
+	* `ssh-keygen -t rsa -P '' -f ~/.ssh/YOUR_DEVICE_NAME` (NOTE: you may need to run `ssh-add ~/.ssh/YOUR_DEVICE_NAME` too)
 	* `ssh-copy-id -i ~/.ssh/YOUR_DEVICE_NAME.pub root@YOUR_DEVICE_IP` (if needed, install ssh-copy-id with `brew install ssh-copy-id`)
 	* You should now be able to connect to your device with `ssh root@YOUR_DEVICE_IP` without entering the password.
 	* **NOTE**: I strongly recommend enabling [SSH via USB](https://iphonedevwiki.net/index.php/SSH_Over_USB) so you can connect to your device as `ssh root@localhost -p 2222` 

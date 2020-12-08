@@ -53,7 +53,7 @@ cleanup() {
 	"
 	
 	# Uninstall app
-	ios-deploy -9 -1 $BUNDLE_ID &> /dev/null
+	ios-deploy -W -9 -1 $BUNDLE_ID &> /dev/null
 }
 
 exit_script() {
@@ -79,7 +79,7 @@ log_cyan "Searching iTunes..."
 ITUNES_ID="${ITUNES_URL##*/}" # Get id
 
 response=$(curl -s "https://itunes.apple.com/us/search?limit=200&term=$ITUNES_ID&media=software")
-if [ "$response" == "" ];then
+if [ "$response" == "" ]; then
 	log_red "Got empty response... iTunes API is down?"
 	exit 1
 elif (( $(echo $response | jq .resultCount) < 1 )); then
@@ -102,7 +102,7 @@ echo -e "\033[1;36m     [+] Bundle id:	\033[0;31m$BUNDLE_ID"
 SECONDS=0
 
 # Uninstall app before starting
-ios-deploy -9 -1 $BUNDLE_ID &> /dev/null
+ios-deploy -W -9 -1 $BUNDLE_ID &> /dev/null
 
 log_yellow "SSHing to device..."
 
@@ -152,10 +152,10 @@ sleep 1
 log_yellow "Waiting for app to install..."
 
 # Wait until app is installed
-max_retries=300
+max_retries=400
 i=0
 while [ "$i" -le "$max_retries" ]; do
-	is_installed="$(ios-deploy -e -1 $BUNDLE_ID)"
+	is_installed="$(ios-deploy -W -e -1 $BUNDLE_ID)"
 	if [[ ${is_installed: -4} == "true" ]]; then 
 		break
 	fi
@@ -201,7 +201,7 @@ log_green "Ok, waiting for decryption..."
 
 sleep 1
 
-ssh -q root@$DEVICE_IP -p $DEVICE_PORT 2> /dev/null 'max_retries=100; i=0; while [ -z "$(find /var/mobile/Containers/Data/Application/ -name decrypted-app.ipa)" ] && [ "$i" -le "$max_retries" ]; do ((i++)); sleep 1; done; [ "$i" -le "$max_retries" ] && exit 0 || exit 1'
+ssh -q root@$DEVICE_IP -p $DEVICE_PORT 2> /dev/null 'max_retries=300; i=0; while [ -z "$(find /var/mobile/Containers/Data/Application/ -name decrypted-app.ipa)" ] && [ "$i" -le "$max_retries" ]; do ((i++)); sleep 1; done; [ "$i" -le "$max_retries" ] && exit 0 || exit 1'
 if [ $? -ne 0 ]; then
 	log_red "Error! App did not decrypt in time. Aborting..."
 	exit_script
@@ -224,30 +224,10 @@ fi
 
 # ------------------------------ Filename ---------------------------------
 
-filename="${NAME//-}" # delete - character
-filename="${filename//—}" # delete — character
-filename="${filename//‒}" # delete ‒ character
-filename="${filename//–}" # delete – character
-filename="${filename//:}" # delete : character
-filename="${filename//&}" # delete & character
-filename="${filename//.}" # delete . character
-filename="${filename//!}" # delete ! character
-filename="${filename//|}" # delete | character
-filename="${filename//®}" # delete ® character
-filename="${filename//,}" # delete , character
-filename="${filename//#}" # delete # character
-filename="${filename//™}" # delete ™ character
-filename="${filename///}" # delete / character
-filename="${filename//(}" # delete ( character
-filename="${filename//)}" # delete ) character
-filename="${filename//+}" # delete + character
-filename="${filename//・}" # delete ・ character
-filename="${filename//  /_}" # replace double spaces with underscore
-filename="${filename// /_}" # replace spaces with underscore
-filename=$(echo $filename | tr '[:upper:]' '[:lower:]') # make it all lowercase
-VERSION="${VERSION//(}" # delete ( character
-VERSION="${VERSION//)}" # delete ) character
-filename="${filename}_${VERSION}.ipa"
+VERSION_="${VERSION//(}" # delete ( character
+VERSION_="${VERSION_//)}" # delete ) character
+filename=$(echo $BUNDLE_ID | tr '[:upper:]' '[:lower:]') # make it all lowercase
+filename="${filename}_${VERSION_}.ipa"
 
 # ------------------------------ Rename .ipa ---------------------------------
 
@@ -262,4 +242,3 @@ log_green "Done! File is at ./ipas/$filename [$size MB]"
 cleanup
 elapsed_time="$(($SECONDS / 3600))h:$((($SECONDS / 60) % 60))m:$(($SECONDS % 60))s"
 log_green "Done! Script ended in [$elapsed_time]"
-exit 0
